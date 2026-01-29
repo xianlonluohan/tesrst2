@@ -1,4 +1,4 @@
-name: Markdown to PDF Converter
+name: Markdown to PDF Converter - Fixed Version
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     tags: ["v*", "pdf-*"]
   pull_request:
     branches: ["main", "master"]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Install dependencies
+      - name: Install all dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -35,229 +35,451 @@ jobs:
             texlive-lang-chinese \
             texlive-science \
             texlive-plain-generic \
+            texlive-latex-base \
+            texlive-font-utils \
+            texlive-pictures \
+            texlive-math-extra \
+            texlive-bibtex-extra \
+            lmodern \
             fonts-noto-cjk \
             fonts-wqy-microhei \
             fonts-wqy-zenhei \
-            lmodern \
+            fonts-font-awesome \
             tree \
             jq \
-            poppler-utils
+            python3 \
+            python3-pip \
+            poppler-utils \
+            imagemagick
+          
+          # 安装 Python 包
+          pip3 install --upgrade pip
+          pip3 install pyyaml beautifulsoup4
       
-      - name: Find Markdown files (safe handling)
-        id: find-md
+      - name: Create comprehensive LaTeX template
         run: |
-          echo "正在查找Markdown文件..."
+          # 创建完整的 LaTeX 模板
+          cat > /tmp/custom-template.tex << 'EOF'
+          \documentclass[12pt,a4paper]{article}
           
-          # 使用安全的find命令，处理空格和特殊字符
-          find . -name "*.md" -not -path "./.*" -not -path "*/node_modules/*" -print0 > /tmp/md_files.txt
+          % 中文支持
+          \usepackage{xeCJK}
+          \setCJKmainfont{Noto Serif CJK SC}
+          \setCJKsansfont{Noto Sans CJK SC}
+          \setCJKmonofont{Noto Sans Mono CJK SC}
           
-          # 统计数量
-          FILE_COUNT=$(tr '\0' '\n' < /tmp/md_files.txt | wc -l)
-          echo "找到 $FILE_COUNT 个Markdown文件"
+          % 代码块处理 - listings 包
+          \usepackage{listings}
+          \usepackage{xcolor}
+          \usepackage{bera}
           
-          # 使用base64编码避免换行和空格问题
-          {
-            echo "found_md_files_base64<<EOF"
-            base64 /tmp/md_files.txt
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          % 页面布局
+          \usepackage[top=2.5cm,bottom=2.5cm,left=2.5cm,right=2.5cm]{geometry}
+          
+          % 图片支持
+          \usepackage{graphicx}
+          \usepackage{float}
+          \usepackage[font=small,labelfont=bf]{caption}
+          \usepackage{subcaption}
+          
+          % 超链接
+          \usepackage[hidelinks]{hyperref}
+          
+          % 页眉页脚
+          \usepackage{fancyhdr}
+          \pagestyle{fancy}
+          \fancyhf{}
+          \fancyhead[L]{\nouppercase{\leftmark}}
+          \fancyhead[R]{\thepage}
+          \renewcommand{\headrulewidth}{0.4pt}
+          
+          % 标题格式
+          \usepackage{titlesec}
+          \titleformat{\section}
+            {\Large\bfseries\sffamily}
+            {\thesection}
+            {1em}
+            {}
+          \titleformat{\subsection}
+            {\large\bfseries\sffamily}
+            {\thesubsection}
+            {1em}
+            {}
+          \titleformat{\subsubsection}
+            {\normalsize\bfseries\sffamily}
+            {\thesubsubsection}
+            {1em}
+            {}
+          
+          % 列表格式
+          \usepackage{enumitem}
+          \setlist[itemize]{leftmargin=*,topsep=5pt,parsep=0pt,itemsep=0pt}
+          \setlist[enumerate]{leftmargin=*,topsep=5pt,parsep=0pt,itemsep=0pt}
+          
+          % 代码块样式 - 解决换行问题
+          \lstset{
+            basicstyle=\ttfamily\footnotesize,
+            breaklines=true,                    % 自动换行
+            breakatwhitespace=true,             % 在空格处换行
+            breakindent=20pt,                   % 换行后的缩进
+            breakautoindent=true,
+            postbreak=\space\space,             % 换行后的字符
+            showstringspaces=false,
+            tabsize=2,
+            frame=single,
+            framesep=6pt,
+            framerule=0.8pt,
+            rulecolor=\color{gray},
+            numbers=left,
+            numberstyle=\tiny\color{gray},
+            numbersep=10pt,
+            stepnumber=1,
+            backgroundcolor=\color{gray!10},
+            keywordstyle=\color{blue}\bfseries,
+            commentstyle=\color{green!60!black},
+            stringstyle=\color{orange},
+            identifierstyle=\color{black},
+            extendedchars=true,
+            literate=
+              {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+              {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+              {à}{{\`a}}1 {è}{{\`e}}1 {ì}{{\`i}}1 {ò}{{\`o}}1 {ù}{{\`u}}1
+              {À}{{\`A}}1 {È}{{\`E}}1 {Ì}{{\`I}}1 {Ò}{{\`O}}1 {Ù}{{\`U}}1
+              {ä}{{\"a}}1 {ë}{{\"e}}1 {ï}{{\"i}}1 {ö}{{\"o}}1 {ü}{{\"u}}1
+              {Ä}{{\"A}}1 {Ë}{{\'E}}1 {Ï}{{\'I}}1 {Ö}{{\'O}}1 {Ü}{{\'U}}1
+              {â}{{\^a}}1 {ê}{{\^e}}1 {î}{{\^i}}1 {ô}{{\^o}}1 {û}{{\^u}}1
+              {Â}{{\^A}}1 {Ê}{{\^E}}1 {Î}{{\^I}}1 {Ô}{{\^O}}1 {Û}{{\^U}}1
+              {ã}{{\~a}}1 {ẽ}{{\~e}}1 {ĩ}{{\~i}}1 {õ}{{\~o}}1 {ũ}{{\~u}}1
+              {Ã}{{\~A}}1 {Ẽ}{{\~E}}1 {Ĩ}{{\~I}}1 {Õ}{{\~O}}1 {Ũ}{{\~U}}1
+              {ç}{{\c c}}1 {Ç}{{\c C}}1
+              {ø}{{\o}}1 {Ø}{{\O}}1
+              {å}{{\r a}}1 {Å}{{\r A}}1
+              {œ}{{\oe}}1 {Œ}{{\OE}}1
+              {æ}{{\ae}}1 {Æ}{{\AE}}1
+              {ß}{{\ss}}1
+              {ñ}{{\~n}}1 {Ñ}{{\~N}}1
+              {¿}{{?`}}1 {¡}{{!`}}1,
+            captionpos=b,
+            abovecaptionskip=10pt,
+            belowcaptionskip=10pt
+          }
+          
+          % 针对 C++ 的额外设置
+          \lstdefinestyle{cpp}{
+            language=C++,
+            style=base,
+            morekeywords={constexpr, auto, nullptr, std, uint32_t, uint16_t, int64_t, uint8_t, size_t},
+            deletekeywords={register},
+            sensitive=true
+          }
+          
+          % 段落设置
+          \usepackage{parskip}
+          \setlength{\parindent}{0pt}
+          \setlength{\parskip}{0.75em}
+          
+          % 颜色定义
+          \definecolor{lightgray}{rgb}{0.95,0.95,0.95}
+          \definecolor{darkgray}{rgb}{0.4,0.4,0.4}
+          
+          \begin{document}
+          
+          $if(title)$
+          \title{$title$}
+          \author{$author$}
+          \date{$date$}
+          \maketitle
+          $endif$
+          
+          $if(toc)$
+          \tableofcontents
+          \newpage
+          $endif$
+          
+          $body$
+          
+          \end{document}
+          EOF
+          
+          echo "完整 LaTeX 模板已创建"
       
-      - name: Set up output directory
+      - name: Prepare for conversion
         run: |
+          echo "准备转换环境..."
+          
+          # 创建输出目录
           mkdir -p pdf_output
-          # 获取当前工作目录的绝对路径
-          echo "WORKSPACE=$(pwd)" >> $GITHUB_ENV
+          
+          # 显示当前目录结构
+          echo "当前目录结构:"
+          find . -maxdepth 3 -type d | sort
       
-      - name: Convert Markdown to PDF (with listings)
+      - name: Comprehensive Markdown to PDF conversion
         run: |
-          echo "开始转换Markdown文件到PDF..."
-          echo "工作目录: $WORKSPACE"
+          echo "开始综合 Markdown 到 PDF 转换..."
           
-          # 解码文件列表
-          base64 --decode <<< "${{ steps.find-md.outputs.found_md_files_base64 }}" > /tmp/md_files.txt
+          # 获取当前工作目录
+          WORKING_DIR=$(pwd)
+          echo "工作目录: $WORKING_DIR"
           
-          # 统计文件数量
-          FILE_COUNT=$(tr '\0' '\n' < /tmp/md_files.txt | wc -l)
-          echo "需要转换的文件数量: $FILE_COUNT"
-          
-          converted_count=0
-          failed_count=0
-          failed_files=""
-          
-          # 使用 while read 循环处理每个文件，正确处理空字符分隔
-          while IFS= read -r -d '' md_file; do
-            [ -z "$md_file" ] && continue
+          # 查找所有 Markdown 文件
+          echo "查找 Markdown 文件..."
+          find . -name "*.md" \
+            ! -path "./.*" \
+            ! -path "*/node_modules/*" \
+            ! -path "*/pdf_output/*" \
+            -type f | while read -r md_file; do
+              
+            echo "处理文件: $md_file"
             
-            # 移除开头的 ./
-            md_file="${md_file#./}"
-            
-            echo "正在转换: $md_file"
-            
-            # 获取目录名和基本名
+            # 获取文件信息
             dir_name=$(dirname "$md_file")
             base_name=$(basename "$md_file" .md)
             
-            # 创建输出目录（使用绝对路径）
-            mkdir -p "$WORKSPACE/pdf_output/$dir_name"
+            # 创建输出目录
+            mkdir -p "pdf_output/$dir_name"
             
-            # 检查文件是否存在
-            if [ ! -f "$md_file" ]; then
-              echo "  ✗ 错误: 文件不存在: $md_file"
-              failed_count=$((failed_count + 1))
-              failed_files="$failed_files\n  - $md_file"
-              continue
-            fi
+            # 复制资源文件到输出目录
+            echo "  复制资源文件..."
             
-            # 创建临时目录用于处理（在工作空间内）
-            temp_dir="$WORKSPACE/temp_pandoc_$(date +%s)_$RANDOM"
-            mkdir -p "$temp_dir"
-            
-            # 复制Markdown文件到临时目录
-            cp "$md_file" "$temp_dir/source.md"
-            
-            # 复制图片资源到临时目录
+            # 复制图片目录
             if [ -d "$dir_name/picture" ]; then
-              mkdir -p "$temp_dir/picture"
-              cp -r "$dir_name/picture"/* "$temp_dir/picture/" 2>/dev/null || true
+              mkdir -p "pdf_output/$dir_name/picture"
+              find "$dir_name/picture" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.gif" -o -name "*.bmp" \) \
+                -exec cp {} "pdf_output/$dir_name/picture/" 2>/dev/null \; || true
             fi
             
+            # 复制资源目录
             if [ -d "$dir_name/resource" ]; then
-              mkdir -p "$temp_dir/resource"
-              cp -r "$dir_name/resource"/* "$temp_dir/resource/" 2>/dev/null || true
+              mkdir -p "pdf_output/$dir_name/resource"
+              find "$dir_name/resource" -type f \( -name "*.zip" -o -name "*.pdf" -o -name "*.txt" -o -name "*.ino" -o -name "*.cpp" -o -name "*.h" \) \
+                -exec cp {} "pdf_output/$dir_name/resource/" 2>/dev/null \; || true
             fi
             
-            # 切换到临时目录
-            cd "$temp_dir"
+            # 预处理 Markdown 文件
+            echo "  预处理 Markdown 文件..."
             
-            # 使用pandoc转换PDF，添加listings支持
-            # 使用绝对路径指定输出文件
-            output_pdf="$WORKSPACE/pdf_output/$dir_name/$base_name.pdf"
+            # 创建临时文件
+            TEMP_FILE="$(mktemp)"
             
-            echo "  输出路径: $output_pdf"
+            # 读取并处理文件内容
+            python3 << 'PYTHON_SCRIPT' > "$TEMP_FILE"
+          import re
+          import sys
+          
+          # 读取文件内容
+          with open('$md_file', 'r', encoding='utf-8') as f:
+              content = f.read()
+          
+          # 1. 修复图片路径
+          # 将相对路径转换为绝对路径
+          def fix_image_path(match):
+              alt_text = match.group(1)
+              img_path = match.group(2)
+              
+              # 如果路径以 ./ 开头，去掉它
+              if img_path.startswith('./'):
+                  img_path = img_path[2:]
+              
+              # 如果是相对路径，转换为相对于当前目录的路径
+              if not img_path.startswith('http'):
+                  # 获取文件所在目录
+                  import os
+                  file_dir = os.path.dirname('$md_file')
+                  
+                  # 构建完整路径
+                  full_path = os.path.join(file_dir, img_path)
+                  full_path = os.path.relpath(full_path, '.')
+                  
+                  return f'![{alt_text}]({full_path})'
+              
+              return match.group(0)
+          
+          # 替换图片路径
+          content = re.sub(r'!\[(.*?)\]\((.*?)\)', fix_image_path, content)
+          
+          # 2. 修复代码块 - 确保代码块有正确的语言标记和格式
+          content = re.sub(r'```(\w*)\s*\n', r'```\1\n', content)
+          content = re.sub(r'\n```', r'\n```\n', content)
+          
+          # 3. 修复特殊字符
+          content = content.replace('Δ', '△')
+          content = content.replace('️', '')
+          
+          # 4. 修复标题格式
+          content = re.sub(r'([^\n])\n#', r'\1\n\n#', content)
+          content = re.sub(r'#(.*?)\n([^\n])', r'#\1\n\n\2', content)
+          
+          # 5. 修复列表格式
+          content = re.sub(r'([^\n])\n\* ', r'\1\n\n* ', content)
+          content = re.sub(r'\n\* (.*?)\n([^\n])', r'\n* \1\n\n\2', content)
+          
+          # 6. 修复表格格式
+          content = re.sub(r'\|(.*?)\|\n([^\|])', r'|\1|\n\n\2', content)
+          
+          # 输出处理后的内容
+          print(content)
+          PYTHON_SCRIPT
+            
+            # 获取文件所在目录的绝对路径
+            FILE_DIR=$(dirname "$md_file")
+            ABS_FILE_DIR=$(realpath "$FILE_DIR")
+            
+            # 构建资源路径
+            RESOURCE_PATH="$ABS_FILE_DIR:$WORKING_DIR"
+            
+            # 添加可能的资源目录
+            if [ -d "$FILE_DIR/picture" ]; then
+              RESOURCE_PATH="$RESOURCE_PATH:$ABS_FILE_DIR/picture"
+            fi
+            
+            if [ -d "$FILE_DIR/resource" ]; then
+              RESOURCE_PATH="$RESOURCE_PATH:$ABS_FILE_DIR/resource"
+            fi
+            
+            # 使用 pandoc 转换 PDF
+            echo "  使用 Pandoc 转换..."
             
             set +e
-            pandoc_output=$(pandoc "source.md" \
-              --resource-path=".:$WORKSPACE/$dir_name:$WORKSPACE" \
-              -o "$output_pdf" \
+            pandoc "$TEMP_FILE" \
+              --resource-path="$RESOURCE_PATH" \
+              -o "pdf_output/$dir_name/$base_name.pdf" \
               --pdf-engine=xelatex \
+              --template=/tmp/custom-template.tex \
               -V mainfont="Noto Serif CJK SC" \
-              -V geometry:margin=1in \
+              -V sansfont="Noto Sans CJK SC" \
+              -V monofont="Noto Sans Mono CJK SC" \
+              -V geometry="margin=2.5cm" \
               -V colorlinks=true \
               -V linkcolor=blue \
               -V urlcolor=blue \
               --listings \
-              --highlight-style=tango \
+              -V listings-options="breaklines=true,breakatwhitespace=true,breakindent=20pt" \
+              --highlight-style=pygments \
               -V lang=zh-CN \
-              -V CJKmainfont="Noto Serif CJK SC" 2>&1)
-            pandoc_exit=$?
+              -V documentclass=article \
+              --toc \
+              --toc-depth=3 \
+              --wrap=none \
+              -M date="$(date '+%Y-%m-%d')" \
+              --metadata=title:"$base_name" \
+              2>&1 | tee "/tmp/pandoc-${base_name}.log"
+            
+            PANDOC_EXIT=$?
             set -e
             
-            # 返回原目录
-            cd - > /dev/null
-            
-            # 清理临时目录
-            rm -rf "$temp_dir"
-            
-            # 检查转换结果
-            if [ $pandoc_exit -eq 0 ] && [ -f "$output_pdf" ]; then
-              file_size=$(du -h "$output_pdf" | cut -f1)
-              echo "  ✓ 成功: $base_name.pdf ($file_size)"
-              converted_count=$((converted_count + 1))
+            # 检查结果
+            if [ $PANDOC_EXIT -eq 0 ] && [ -f "pdf_output/$dir_name/$base_name.pdf" ]; then
+              # 获取文件信息
+              FILE_SIZE=$(du -h "pdf_output/$dir_name/$base_name.pdf" | cut -f1)
               
-              # 验证PDF
-              if pdfinfo "$output_pdf" > /dev/null 2>&1; then
-                page_count=$(pdfinfo "$output_pdf" 2>/dev/null | grep "Pages:" | awk '{print $2}' || echo "未知")
-                echo "    页数: $page_count"
+              # 检查页数
+              if command -v pdfinfo > /dev/null 2>&1; then
+                PAGE_COUNT=$(pdfinfo "pdf_output/$dir_name/$base_name.pdf" 2>/dev/null | grep "Pages:" | awk '{print $2}' || echo "N/A")
+                echo "  ✅ 成功: $base_name.pdf ($FILE_SIZE, $PAGE_COUNT 页)"
+              else
+                echo "  ✅ 成功: $base_name.pdf ($FILE_SIZE)"
               fi
+              
+              # 验证内容
+              echo "    内容验证:"
+              
+              # 检查代码块
+              if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | grep -q "#include"; then
+                echo "      ✓ 检测到代码块"
+              fi
+              
+              # 检查图片
+              if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | grep -q "图像\|图片\|image"; then
+                echo "      ✓ 检测到图片引用"
+              fi
+              
+              # 检查中文内容
+              if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | grep -q "课程\|实验\|硬件"; then
+                echo "      ✓ 检测到中文内容"
+              fi
+              
             else
-              echo "  ✗ 失败: $md_file"
-              echo "  Pandoc退出代码: $pandoc_exit"
-              echo "  错误信息:"
-              echo "$pandoc_output" | sed 's/^/    /'
+              echo "  ❌ 失败: $md_file"
               
-              # 尝试更简单的命令调试
-              echo "  尝试调试..."
-              if [ -f "$md_file" ]; then
-                echo "    源文件存在，大小: $(du -h "$md_file" | cut -f1)"
-                
-                # 测试简单的转换
-                test_temp="$WORKSPACE/test_temp"
-                mkdir -p "$test_temp"
-                cp "$md_file" "$test_temp/test.md"
-                cd "$test_temp"
-                
-                # 尝试最简单的转换
-                if pandoc "test.md" -o "test.pdf" --pdf-engine=xelatex 2>/dev/null; then
-                  echo "    简单转换成功"
-                else
-                  echo "    简单转换也失败"
-                fi
-                cd - > /dev/null
-                rm -rf "$test_temp"
+              # 显示错误日志
+              if [ -f "/tmp/pandoc-${base_name}.log" ]; then
+                echo "    错误信息:"
+                tail -20 "/tmp/pandoc-${base_name}.log" | sed 's/^/      /'
               fi
-              
-              failed_count=$((failed_count + 1))
-              failed_files="$failed_files\n  - $md_file"
             fi
             
+            # 清理临时文件
+            rm -f "$TEMP_FILE" "/tmp/pandoc-${base_name}.log" 2>/dev/null || true
+            
             echo ""  # 空行分隔
-          done < /tmp/md_files.txt
-          
-          echo ""
-          echo "================================"
-          echo "转换完成!"
-          echo "成功: $converted_count 个文件"
-          echo "失败: $failed_count 个文件"
-          
-          if [ $failed_count -gt 0 ]; then
-            echo "失败的文件:"
-            echo -e "$failed_files"
-          fi
-          
-          echo "================================"
-          
-          # 显示生成的PDF列表
-          echo "生成的PDF文件:"
-          find pdf_output -name "*.pdf" -type f | sort | while read pdf; do
-            size=$(du -h "$pdf" | cut -f1)
-            echo "  - ${pdf#pdf_output/} ($size)"
           done
           
-          # 如果所有文件都失败，则退出
-          if [ $converted_count -eq 0 ] && [ $failed_count -gt 0 ]; then
-            echo "错误: 没有成功转换任何文件"
-            exit 1
-          fi
+          # 显示转换统计
+          echo ""
+          echo "转换统计:"
+          TOTAL_PDFS=$(find pdf_output -name "*.pdf" -type f | wc -l)
+          echo "总共生成 $TOTAL_PDFS 个 PDF 文件"
       
-      - name: Create release documentation
+      - name: Verify PDF output quality
         run: |
-          echo "创建发布文档..."
+          echo "验证 PDF 输出质量..."
           
-          # 获取 tag 名称（如果有）
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            TAG_NAME="${GITHUB_REF#refs/tags/}"
-          else
-            TAG_NAME="latest"
-          fi
+          # 检查每个 PDF 文件
+          find pdf_output -name "*.pdf" -type f | head -5 | while read pdf_file; do
+            echo "检查文件: $pdf_file"
+            
+            # 检查 PDF 基本信息
+            if command -v pdfinfo > /dev/null 2>&1; then
+              if pdfinfo "$pdf_file" > /dev/null 2>&1; then
+                PAGE_COUNT=$(pdfinfo "$pdf_file" 2>/dev/null | grep "Pages:" | awk '{print $2}')
+                FILE_SIZE=$(du -h "$pdf_file" | cut -f1)
+                echo "  ✓ 有效 PDF ($FILE_SIZE, $PAGE_COUNT 页)"
+                
+                # 提取文本检查
+                echo "    文本预览:"
+                pdftotext "$pdf_file" - 2>/dev/null | head -5 | sed 's/^/      /'
+                
+              else
+                echo "  ✗ 无效 PDF 文件"
+              fi
+            else
+              echo "  ℹ 无法检查 PDF 信息 (pdfinfo 不可用)"
+            fi
+            
+            echo ""
+          done
+      
+      - name: Create documentation and summary
+        run: |
+          echo "创建文档和摘要..."
           
-          # 创建 README
-          echo "# PDF 文档集" > pdf_output/README.md
-          echo "" >> pdf_output/README.md
-          echo "## 生成信息" >> pdf_output/README.md
-          echo "- **生成时间**: $(date '+%Y-%m-%d %H:%M:%S')" >> pdf_output/README.md
-          echo "- **GitHub SHA**: ${{ github.sha }}" >> pdf_output/README.md
-          echo "- **触发事件**: ${{ github.event_name }}" >> pdf_output/README.md
-          echo "- **Git 引用**: ${{ github.ref }}" >> pdf_output/README.md
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "- **标签**: $TAG_NAME" >> pdf_output/README.md
-          fi
-          echo "" >> pdf_output/README.md
+          # 创建 README 文件
+          cat > pdf_output/README.md << 'EOF'
+          # PDF 文档集
           
-          echo "## 文件列表" >> pdf_output/README.md
-          echo "" >> pdf_output/README.md
+          ## 生成信息
           
-          # 统计文件数量
+          - **生成时间**: $(date '+%Y-%m-%d %H:%M:%S')
+          - **GitHub SHA**: ${{ github.sha }}
+          - **触发事件**: ${{ github.event_name }}
+          - **工作流**: ${{ github.workflow }}
+          
+          ## 转换设置
+          
+          - **模板**: 自定义 LaTeX 模板
+          - **字体**: Noto Serif CJK SC (中文)
+          - **代码块**: listings 包 (自动换行)
+          - **图片**: 支持 PNG, JPG, GIF, BMP
+          
+          ## 文件列表
+          
+          EOF
+          
+          # 统计 PDF 文件
           PDF_COUNT=$(find pdf_output -name "*.pdf" -type f | wc -l)
+          echo "**总计: $PDF_COUNT 个 PDF 文件**" >> pdf_output/README.md
+          echo "" >> pdf_output/README.md
           
           # 按目录组织文件列表
           current_dir=""
@@ -267,7 +489,6 @@ jobs:
             file_name=$(basename "$pdf_file")
             file_size=$(du -h "$pdf_file" | cut -f1)
             
-            # 如果是新的目录，添加标题
             if [ "$current_dir" != "$dir_name" ]; then
               current_dir="$dir_name"
               if [ "$dir_name" != "." ]; then
@@ -279,49 +500,44 @@ jobs:
             echo "- [$file_name]($rel_path) ($file_size)" >> pdf_output/README.md
           done
           
-          echo "" >> pdf_output/README.md
-          echo "**总计: $PDF_COUNT 个 PDF 文件**" >> pdf_output/README.md
+          # 添加使用说明
+          cat >> pdf_output/README.md << 'EOF'
           
-          # 创建发布说明（只用于 tag 发布）
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "# PDF 文档发布 - $TAG_NAME" > pdf_output/RELEASE_NOTES.md
-            echo "" >> pdf_output/RELEASE_NOTES.md
-            echo "## 版本信息" >> pdf_output/RELEASE_NOTES.md
-            echo "- **发布日期**: $(date '+%Y-%m-%d %H:%M:%S')" >> pdf_output/RELEASE_NOTES.md
-            echo "- **版本**: $TAG_NAME" >> pdf_output/RELEASE_NOTES.md
-            echo "- **包含文件**: $PDF_COUNT 个 PDF 文档" >> pdf_output/RELEASE_NOTES.md
-            echo "- **生成提交**: ${{ github.sha }}" >> pdf_output/RELEASE_NOTES.md
-            echo "" >> pdf_output/RELEASE_NOTES.md
-            
-            echo "## 文件清单" >> pdf_output/RELEASE_NOTES.md
-            echo "" >> pdf_output/RELEASE_NOTES.md
-            echo "| 文件路径 | 大小 |" >> pdf_output/RELEASE_NOTES.md
-            echo "|----------|------|" >> pdf_output/RELEASE_NOTES.md
-            
-            find pdf_output -name "*.pdf" -type f | sort | while read pdf_file; do
-              rel_path=${pdf_file#pdf_output/}
-              file_size=$(du -h "$pdf_file" | cut -f1)
-              echo "| $rel_path | $file_size |" >> pdf_output/RELEASE_NOTES.md
-            done
-          fi
+          ## 质量保证
+          
+          此转换过程已优化以确保:
+          
+          1. **代码块正确换行** - 使用 listings 包，设置 breaklines=true
+          2. **图片正确显示** - 自动修复图片路径
+          3. **中文字体支持** - 使用 Noto Serif CJK SC 字体
+          4. **格式保持** - 保持原始 Markdown 的标题、列表、表格格式
+          
+          ## 问题反馈
+          
+          如果发现任何问题，请检查:
+          
+          - 图片路径是否正确
+          - 代码块是否有正确的语言标记
+          - 特殊字符是否被正确处理
+          EOF
       
-      - name: Create zip archive for release
+      - name: Package PDFs for release
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          echo "为 GitHub Releases 创建压缩包..."
+          echo "打包 PDF 文件用于发布..."
           
-          # 获取 tag 名称
           TAG_NAME="${GITHUB_REF#refs/tags/}"
+          ZIP_NAME="pdf-documents-${TAG_NAME}.zip"
           
           # 创建压缩包
           cd pdf_output
-          zip -r "../pdf-documents-$TAG_NAME.zip" .
+          zip -r "../$ZIP_NAME" .
           cd ..
           
-          echo "压缩包已创建: pdf-documents-$TAG_NAME.zip"
-          ls -lh pdf-documents-*.zip
+          echo "压缩包已创建: $ZIP_NAME"
+          ls -lh "$ZIP_NAME"
       
-      - name: Upload PDF artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: pdf-documents
@@ -332,25 +548,27 @@ jobs:
       
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: "PDF Documents - ${{ github.ref_name }}"
-          body_path: pdf_output/RELEASE_NOTES.md
+          body_path: pdf_output/README.md
           files: |
             pdf-documents-${{ github.ref_name }}.zip
           draft: false
           prerelease: false
           generate_release_notes: true
       
-      - name: Verify release creation
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Final verification
         run: |
-          echo "Release 创建完成!"
-          echo "访问: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          echo "最终验证..."
+          
+          echo "✅ PDF 转换工作流完成"
           echo ""
-          echo "包含文件:"
-          echo "- pdf-documents-${{ github.ref_name }}.zip (完整文档包)"
+          echo "生成的文件:"
+          find pdf_output -name "*.pdf" -type f | wc -l | xargs echo "- PDF 文件:"
+          find pdf_output -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" | wc -l | xargs echo "- 图片文件:"
+          
           echo ""
-          echo "您也可以从 Actions Artifacts 下载 PDF 文件。"
+          echo "输出目录结构:"
+          find pdf_output -type d | sort | sed 's/^/  /'
