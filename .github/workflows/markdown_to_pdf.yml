@@ -8,9 +8,8 @@ on:
     branches: ["main", "master"]
   workflow_dispatch:  # 允许手动触发
 
-# 修正权限配置
 permissions:
-  contents: write  # 这个权限已经包含了创建release的权限
+  contents: write
   pages: write
   id-token: write
 
@@ -44,21 +43,19 @@ jobs:
             jq \
             poppler-utils
       
-      - name: Find Markdown files
+      - name: Find Markdown files (safe handling)
         id: find-md
         run: |
-          # 使用 find 的 -print0 和 xargs -0 处理带空格的文件名
-          # 查找所有md文件，排除node_modules等目录
           echo "正在查找Markdown文件..."
           
-          # 创建临时文件列表
+          # 使用安全的find命令，处理空格和特殊字符
           find . -name "*.md" -not -path "./.*" -not -path "*/node_modules/*" -print0 > /tmp/md_files.txt
           
           # 统计数量
-          FILE_COUNT=$(cat /tmp/md_files.txt | tr '\0' '\n' | wc -l)
+          FILE_COUNT=$(tr '\0' '\n' < /tmp/md_files.txt | wc -l)
           echo "找到 $FILE_COUNT 个Markdown文件"
           
-          # 使用 base64 编码输出，避免换行和空格问题
+          # 使用base64编码避免换行和空格问题
           {
             echo "found_md_files_base64<<EOF"
             base64 /tmp/md_files.txt
@@ -69,7 +66,7 @@ jobs:
         run: |
           mkdir -p pdf_output
       
-      - name: Convert Markdown to PDF
+      - name: Convert Markdown to PDF (with listings)
         run: |
           echo "开始转换Markdown文件到PDF..."
           
@@ -97,7 +94,7 @@ jobs:
             dir_name=$(dirname "$md_file")
             base_name=$(basename "$md_file" .md)
             
-            # 创建输出目录（确保路径用引号括起来）
+            # 创建输出目录
             mkdir -p "pdf_output/$dir_name"
             
             # 复制资源文件（如果有）
@@ -111,9 +108,6 @@ jobs:
               find "$dir_name/resource" -type f -exec cp {} "pdf_output/$dir_name/resource/" 2>/dev/null \; || true
             fi
             
-            # 调试：显示实际文件路径
-            echo "  完整路径: $(pwd)/$md_file"
-            
             # 检查文件是否存在
             if [ ! -f "$md_file" ]; then
               echo "  ✗ 错误: 文件不存在: $md_file"
@@ -122,31 +116,21 @@ jobs:
               continue
             fi
             
-            # 获取文件大小
-            file_size=$(du -h "$md_file" | cut -f1)
-            echo "  文件大小: $file_size"
-            
-            # 设置输出文件名（避免空格问题）
-            output_pdf="pdf_output/$dir_name/$base_name.pdf"
-            
-            # 创建临时目录用于资源
+            # 创建临时目录用于处理
             temp_dir="/tmp/pandoc_$(date +%s)_$RANDOM"
             mkdir -p "$temp_dir"
             
-            # 复制Markdown文件到临时目录（避免路径问题）
+            # 复制Markdown文件到临时目录
             cp "$md_file" "$temp_dir/source.md"
-            
-            # 使用pandoc转换PDF
-            echo "  开始Pandoc转换..."
             
             # 切换到临时目录
             cd "$temp_dir"
             
-            # 执行pandoc命令
+            # 使用pandoc转换PDF，添加listings支持
             set +e
             pandoc_output=$(pandoc "source.md" \
               --resource-path=".:..:$(dirname "$md_file")" \
-              -o "$output_pdf" \
+              -o "../pdf_output/$dir_name/$base_name.pdf" \
               --pdf-engine=xelatex \
               -V mainfont="Noto Serif CJK SC" \
               -V geometry:margin=1in \
@@ -167,31 +151,17 @@ jobs:
             rm -rf "$temp_dir"
             
             # 检查转换结果
-            if [ $pandoc_exit -eq 0 ] && [ -f "$output_pdf" ]; then
-              pdf_size=$(du -h "$output_pdf" | cut -f1)
-              echo "  ✓ 成功: $base_name.pdf ($pdf_size)"
+            if [ $pandoc_exit -eq 0 ] && [ -f "pdf_output/$dir_name/$base_name.pdf" ]; then
+              file_size=$(du -h "pdf_output/$dir_name/$base_name.pdf" | cut -f1)
+              echo "  ✓ 成功: $base_name.pdf ($file_size)"
               converted_count=$((converted_count + 1))
-              
-              # 验证PDF
-              if pdfinfo "$output_pdf" > /dev/null 2>&1; then
-                page_count=$(pdfinfo "$output_pdf" 2>/dev/null | grep "Pages:" | awk '{print $2}' || echo "未知")
-                echo "    页数: $page_count"
-              fi
             else
               echo "  ✗ 失败: $md_file"
-              echo "  Pandoc错误:"
+              echo "  错误信息:"
               echo "$pandoc_output" | sed 's/^/    /'
-              
-              # 检查文件编码问题
-              if file "$md_file" | grep -q "CRLF"; then
-                echo "    注意: 文件包含Windows换行符(CRLF)"
-              fi
-              
               failed_count=$((failed_count + 1))
               failed_files="$failed_files\n  - $md_file"
             fi
-            
-            echo ""  # 空行分隔
           done < /tmp/md_files.txt
           
           echo ""
@@ -199,22 +169,12 @@ jobs:
           echo "转换完成!"
           echo "成功: $converted_count 个文件"
           echo "失败: $failed_count 个文件"
-          
           if [ $failed_count -gt 0 ]; then
             echo "失败的文件:"
             echo -e "$failed_files"
           fi
-          
           echo "================================"
           
-          # 显示生成的PDF列表
-          echo "生成的PDF文件:"
-          find pdf_output -name "*.pdf" -type f | sort | while read pdf; do
-            size=$(du -h "$pdf" | cut -f1)
-            echo "  - ${pdf#pdf_output/} ($size)"
-          done
-          
-          # 如果所有文件都失败，则退出
           if [ $converted_count -eq 0 ] && [ $failed_count -gt 0 ]; then
             echo "错误: 没有成功转换任何文件"
             exit 1
