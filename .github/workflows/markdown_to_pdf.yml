@@ -33,17 +33,20 @@ jobs:
             texlive-fonts-recommended \
             texlive-latex-recommended \
             texlive-lang-chinese \
-            texlive-science \
-            texlive-plain-generic \
-            texlive-latex-base \
-            texlive-font-utils \
             fonts-noto-cjk \
             fonts-wqy-microhei \
             fonts-wqy-zenhei \
             lmodern \
             tree \
             jq \
+            python3 \
+            python3-pip \
             poppler-utils
+      
+      - name: Install Python packages for preprocessing
+        run: |
+          pip3 install --upgrade pip
+          pip3 install markdown
       
       - name: Find Markdown files (safe handling)
         id: find-md
@@ -68,126 +71,7 @@ jobs:
         run: |
           mkdir -p pdf_output
       
-      - name: Create LaTeX template for code blocks
-        run: |
-          # 创建专业的LaTeX模板
-          cat > /tmp/code-template.tex << 'EOF'
-          \documentclass[12pt,a4paper]{article}
-          \usepackage{xeCJK}
-          \setCJKmainfont{Noto Serif CJK SC}
-          \setCJKsansfont{Noto Sans CJK SC}
-          \setCJKmonofont{Noto Sans Mono CJK SC}
-          
-          \usepackage{listings}
-          \usepackage{xcolor}
-          \usepackage{geometry}
-          \geometry{margin=1in}
-          
-          \usepackage{hyperref}
-          \hypersetup{
-            colorlinks=true,
-            linkcolor=blue,
-            urlcolor=blue,
-            citecolor=green,
-            pdftitle={PDF Document},
-            pdfauthor={GitHub Actions},
-            pdfsubject={Markdown to PDF Conversion},
-            pdfkeywords={Markdown, PDF, Pandoc}
-          }
-          
-          \usepackage{fancyhdr}
-          \pagestyle{fancy}
-          \fancyhf{}
-          \fancyhead[L]{\leftmark}
-          \fancyhead[R]{\thepage}
-          
-          \usepackage{titlesec}
-          \titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
-          \titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
-          \titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
-          
-          % 代码块样式配置
-          \lstset{
-            basicstyle=\ttfamily\footnotesize,
-            breaklines=true,               % 自动换行
-            breakatwhitespace=true,        % 在空格处换行
-            postbreak=\mbox{\textcolor{red}{$\hookrightarrow$}\space}, % 换行标志
-            showstringspaces=false,        % 不显示字符串中的空格
-            tabsize=2,                     % 制表符大小
-            frame=single,                  % 边框
-            framesep=5pt,                  % 边框间距
-            framerule=0.5pt,               % 边框线宽
-            rulecolor=\color{gray!40},     % 边框颜色
-            numbers=left,                  % 行号在左边
-            numberstyle=\tiny\color{gray}, % 行号样式
-            stepnumber=1,                  % 每行显示行号
-            numbersep=5pt,                 % 行号与代码间距
-            backgroundcolor=\color{gray!5},% 背景色
-            keywordstyle=\color{blue!70!black}\bfseries,
-            commentstyle=\color{green!50!black},
-            stringstyle=\color{orange},
-            identifierstyle=\color{black},
-            extendedchars=true,            % 支持非ASCII字符
-            literate=                      % 特殊字符处理
-              {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
-              {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
-              {à}{{\`a}}1 {è}{{\`e}}1 {ì}{{\`i}}1 {ò}{{\`o}}1 {ù}{{\`u}}1
-              {À}{{\`A}}1 {È}{{\`E}}1 {Ì}{{\`I}}1 {Ò}{{\`O}}1 {Ù}{{\`U}}1
-              {ä}{{\"a}}1 {ë}{{\"e}}1 {ï}{{\"i}}1 {ö}{{\"o}}1 {ü}{{\"u}}1
-              {Ä}{{\"A}}1 {Ë}{{\"E}}1 {Ï}{{\"I}}1 {Ö}{{\"O}}1 {Ü}{{\"U}}1
-              {â}{{\^a}}1 {ê}{{\^e}}1 {î}{{\^i}}1 {ô}{{\^o}}1 {û}{{\^u}}1
-              {Â}{{\^A}}1 {Ê}{{\^E}}1 {Î}{{\^I}}1 {Ô}{{\^O}}1 {Û}{{\^U}}1
-              {ã}{{\~a}}1 {ẽ}{{\~e}}1 {ĩ}{{\~i}}1 {õ}{{\~o}}1 {ũ}{{\~u}}1
-              {Ã}{{\~A}}1 {Ẽ}{{\~E}}1 {Ĩ}{{\~I}}1 {Õ}{{\~O}}1 {Ũ}{{\~U}}1
-              {ç}{{\c c}}1 {Ç}{{\c C}}1
-              {ø}{{\o}}1 {Ø}{{\O}}1
-              {å}{{\r a}}1 {Å}{{\r A}}1
-              {œ}{{\oe}}1 {Œ}{{\OE}}1
-              {æ}{{\ae}}1 {Æ}{{\AE}}1
-              {ß}{{\ss}}1
-              {£}{{\pounds}}1
-              {«}{{\guillemotleft}}1
-              {»}{{\guillemotright}}1
-              {ñ}{{\~n}}1 {Ñ}{{\~N}}1
-              {¿}{{?`}}1 {¡}{{!`}}1
-          }
-          
-          % C++ 代码样式
-          \lstdefinestyle{cpp}{
-            language=C++,
-            style=base,
-            morekeywords={constexpr, auto, nullptr, std},
-            deletekeywords={register},
-            sensitive=true
-          }
-          
-          % Python 代码样式
-          \lstdefinestyle{python}{
-            language=Python,
-            style=base,
-            morekeywords={def, class, lambda, yield, with, as},
-            comment=[l]{\#}
-          }
-          
-          \begin{document}
-          \title{$title$}
-          \author{$author$}
-          \date{$date$}
-          \maketitle
-          
-          $if(toc)$
-          \tableofcontents
-          \newpage
-          $endif$
-          
-          $body$
-          
-          \end{document}
-          EOF
-          
-          echo "LaTeX 模板已创建"
-      
-      - name: Convert Markdown to PDF (with custom template)
+      - name: Convert Markdown to PDF (with preprocessing)
         run: |
           echo "开始转换Markdown文件到PDF..."
           
@@ -201,6 +85,91 @@ jobs:
           converted_count=0
           failed_count=0
           failed_files=""
+          
+          # 创建预处理脚本
+          cat > /tmp/preprocess_markdown.py << 'EOF'
+          import re
+          import sys
+          
+          def preprocess_markdown(content):
+              """预处理Markdown内容，修复代码块格式"""
+              
+              # 1. 修复代码块标记
+              # 确保代码块开始标记后有一个换行
+              content = re.sub(r'```(\w*)\s*\n', r'```\1\n', content)
+              
+              # 确保代码块结束标记前有一个换行
+              content = re.sub(r'\n\s*```', r'\n```\n', content)
+              
+              # 2. 处理代码块内的长行
+              # 匹配代码块
+              code_block_pattern = r'```(\w*)\n(.*?)```'
+              
+              def process_code_block(match):
+                  lang = match.group(1)
+                  code = match.group(2)
+                  
+                  # 标准化换行符
+                  code = code.replace('\r\n', '\n').replace('\r', '\n')
+                  
+                  # 处理特别长的行（在运算符和逗号后添加换行）
+                  lines = code.split('\n')
+                  processed_lines = []
+                  
+                  for line in lines:
+                      # 如果一行太长（>80字符），尝试在特定位置添加换行
+                      if len(line) > 80:
+                          # 在逗号、分号后添加换行（保留缩进）
+                          line = re.sub(r'([,;])\s*', r'\1\n    ', line)
+                          
+                          # 在赋值运算符后添加换行
+                          line = re.sub(r'(\s=\s)', r'\1\n    ', line)
+                          
+                          # 在方法调用点后添加换行
+                          line = re.sub(r'(\.\w+\()', r'\n    \1', line)
+                      
+                      processed_lines.append(line)
+                  
+                  processed_code = '\n'.join(processed_lines)
+                  
+                  return f'```{lang}\n{processed_code}\n```'
+              
+              # 使用DOTALL标志匹配多行代码块
+              content = re.sub(code_block_pattern, process_code_block, content, flags=re.DOTALL)
+              
+              # 3. 确保代码块周围有空行
+              content = re.sub(r'([^\n])\n```', r'\1\n\n```', content)
+              content = re.sub(r'```\n([^\n])', r'```\n\n\1', content)
+              
+              # 4. 修复标题格式
+              content = re.sub(r'([^\n])\n#', r'\1\n\n#', content)
+              content = re.sub(r'#(.*?)\n([^\n])', r'#\1\n\n\2', content)
+              
+              return content
+          
+          if __name__ == "__main__":
+              if len(sys.argv) != 3:
+                  print("用法: python preprocess_markdown.py <输入文件> <输出文件>")
+                  sys.exit(1)
+              
+              input_file = sys.argv[1]
+              output_file = sys.argv[2]
+              
+              try:
+                  with open(input_file, 'r', encoding='utf-8') as f:
+                      content = f.read()
+                  
+                  # 应用预处理
+                  processed_content = preprocess_markdown(content)
+                  
+                  with open(output_file, 'w', encoding='utf-8') as f:
+                      f.write(processed_content)
+                  
+                  print(f"预处理完成: {input_file}")
+              except Exception as e:
+                  print(f"预处理错误: {e}")
+                  sys.exit(1)
+          EOF
           
           # 使用 while read 循环处理每个文件，正确处理空字符分隔
           while IFS= read -r -d '' md_file; do
@@ -241,33 +210,44 @@ jobs:
             temp_dir="/tmp/pandoc_$(date +%s)_$RANDOM"
             mkdir -p "$temp_dir"
             
-            # 复制Markdown文件到临时目录
-            cp "$md_file" "$temp_dir/source.md"
+            # 预处理Markdown文件
+            echo "  预处理Markdown文件..."
+            python3 /tmp/preprocess_markdown.py "$md_file" "$temp_dir/source.md"
+            
+            # 检查预处理结果
+            if [ ! -f "$temp_dir/source.md" ]; then
+              echo "  ✗ 预处理失败: $md_file"
+              rm -rf "$temp_dir"
+              failed_count=$((failed_count + 1))
+              failed_files="$failed_files\n  - $md_file"
+              continue
+            fi
             
             # 切换到临时目录
             cd "$temp_dir"
             
-            # 使用pandoc转换PDF，使用自定义模板
+            # 使用pandoc转换PDF，结合多种优化
             set +e
             pandoc_output=$(pandoc "source.md" \
               --resource-path=".:..:$(dirname "$md_file")" \
               -o "../pdf_output/$dir_name/$base_name.pdf" \
               --pdf-engine=xelatex \
-              --template=/tmp/code-template.tex \
               -V mainfont="Noto Serif CJK SC" \
               -V sansfont="Noto Sans CJK SC" \
               -V monofont="Noto Sans Mono CJK SC" \
-              -V geometry:margin=1in \
+              -V geometry="margin=1in,top=1.5cm,bottom=1.5cm,left=2cm,right=2cm" \
               -V colorlinks=true \
               -V linkcolor=blue \
               -V urlcolor=blue \
-              --highlight-style=tango \
+              -V citecolor=green \
+              --listings \
+              -V listings-options="breaklines=true,breakatwhitespace=true,postbreak=\mbox{\textcolor{red}{$\hookrightarrow$}\space}" \
+              --highlight-style=pygments \
               -V lang=zh-CN \
-              --toc \
-              --toc-depth=3 \
-              -V toc-title="目录" \
               -V documentclass=article \
-              -V classoption=12pt,a4paper 2>&1)
+              -V classoption=oneside \
+              --toc \
+              --toc-depth=3 2>&1)
             pandoc_exit=$?
             set -e
             
@@ -282,6 +262,12 @@ jobs:
               file_size=$(du -h "pdf_output/$dir_name/$base_name.pdf" | cut -f1)
               echo "  ✓ 成功: $base_name.pdf ($file_size)"
               converted_count=$((converted_count + 1))
+              
+              # 验证代码块
+              echo "  验证代码块格式..."
+              if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | grep -q "#include"; then
+                echo "    检测到代码块"
+              fi
             else
               echo "  ✗ 失败: $md_file"
               echo "  错误信息:"
