@@ -23,34 +23,52 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Install all dependencies
+      - name: Install all dependencies (Ubuntu 24.04 compatible)
         run: |
           sudo apt-get update
+          
+          # 基本系统工具
           sudo apt-get install -y \
-            pandoc \
-            texlive-xetex \
-            texlive-latex-extra \
-            texlive-fonts-recommended \
-            texlive-latex-recommended \
-            texlive-lang-chinese \
-            texlive-science \
-            texlive-plain-generic \
-            texlive-latex-base \
-            texlive-font-utils \
-            texlive-pictures \
-            texlive-math-extra \
-            texlive-bibtex-extra \
-            lmodern \
-            fonts-noto-cjk \
-            fonts-wqy-microhei \
-            fonts-wqy-zenhei \
-            fonts-font-awesome \
+            wget \
+            curl \
+            git \
             tree \
             jq \
             python3 \
             python3-pip \
             poppler-utils \
             imagemagick
+          
+          # Pandoc
+          sudo apt-get install -y pandoc
+          
+          # 完整安装 TeX Live（包括所有中文支持）
+          # 使用更可靠的方法安装 TeX Live
+          echo "安装 TeX Live 完整版（可能需要几分钟）..."
+          
+          # 首先安装基础包
+          sudo apt-get install -y \
+            texlive \
+            texlive-xetex \
+            texlive-latex-recommended \
+            texlive-latex-extra \
+            texlive-fonts-recommended \
+            texlive-fonts-extra \
+            texlive-lang-chinese \
+            texlive-lang-cjk \
+            texlive-science \
+            texlive-pictures \
+            texlive-luatex \
+            lmodern \
+            fonts-noto-cjk \
+            fonts-wqy-microhei \
+            fonts-wqy-zenhei \
+            fonts-font-awesome
+          
+          # 验证安装
+          echo "TeX Live 组件验证:"
+          which xelatex && xelatex --version | head -1
+          which pandoc && pandoc --version | head -1
           
           # 安装 Python 包
           pip3 install --upgrade pip
@@ -150,7 +168,7 @@ jobs:
               {â}{{\^a}}1 {ê}{{\^e}}1 {î}{{\^i}}1 {ô}{{\^o}}1 {û}{{\^u}}1
               {Â}{{\^A}}1 {Ê}{{\^E}}1 {Î}{{\^I}}1 {Ô}{{\^O}}1 {Û}{{\^U}}1
               {ã}{{\~a}}1 {ẽ}{{\~e}}1 {ĩ}{{\~i}}1 {õ}{{\~o}}1 {ũ}{{\~u}}1
-              {Ã}{{\~A}}1 {Ẽ}{{\~E}}1 {Ĩ}{{\~I}}1 {Õ}{{\~O}}1 {Ũ}{{\~U}}1
+              {Ã}{{\~A}}1 {Ẽ}{{\~E}}1 {Ĩ}{{\~I}}1 {Õ}{{\~O}}1 {Ũ}{{\'U}}1
               {ç}{{\c c}}1 {Ç}{{\c C}}1
               {ø}{{\o}}1 {Ø}{{\O}}1
               {å}{{\r a}}1 {Å}{{\r A}}1
@@ -165,7 +183,7 @@ jobs:
           }
           
           % 针对 C++ 的额外设置
-          \lstdefinestyle{cpp}{
+          \lstdefinelanguage{C++}{
             language=C++,
             style=base,
             morekeywords={constexpr, auto, nullptr, std, uint32_t, uint16_t, int64_t, uint8_t, size_t},
@@ -213,6 +231,12 @@ jobs:
           # 显示当前目录结构
           echo "当前目录结构:"
           find . -maxdepth 3 -type d | sort
+          
+          # 检查工具版本
+          echo "工具版本:"
+          pandoc --version | head -3
+          xelatex --version | head -2
+          python3 --version
       
       - name: Comprehensive Markdown to PDF conversion
         run: |
@@ -224,12 +248,20 @@ jobs:
           
           # 查找所有 Markdown 文件
           echo "查找 Markdown 文件..."
+          
+          # 创建文件列表
           find . -name "*.md" \
             ! -path "./.*" \
             ! -path "*/node_modules/*" \
             ! -path "*/pdf_output/*" \
-            -type f | while read -r md_file; do
-              
+            -type f > /tmp/markdown_files.txt
+          
+          # 统计文件数量
+          FILE_COUNT=$(wc -l < /tmp/markdown_files.txt)
+          echo "找到 $FILE_COUNT 个 Markdown 文件"
+          
+          # 处理每个文件
+          while IFS= read -r md_file; do
             echo "处理文件: $md_file"
             
             # 获取文件信息
@@ -239,21 +271,27 @@ jobs:
             # 创建输出目录
             mkdir -p "pdf_output/$dir_name"
             
-            # 复制资源文件到输出目录
             echo "  复制资源文件..."
             
             # 复制图片目录
             if [ -d "$dir_name/picture" ]; then
+              echo "    复制 picture 目录..."
               mkdir -p "pdf_output/$dir_name/picture"
-              find "$dir_name/picture" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.gif" -o -name "*.bmp" \) \
-                -exec cp {} "pdf_output/$dir_name/picture/" 2>/dev/null \; || true
+              # 使用 rsync 保留目录结构
+              rsync -av "$dir_name/picture/" "pdf_output/$dir_name/picture/" 2>/dev/null || true
             fi
             
             # 复制资源目录
             if [ -d "$dir_name/resource" ]; then
+              echo "    复制 resource 目录..."
               mkdir -p "pdf_output/$dir_name/resource"
-              find "$dir_name/resource" -type f \( -name "*.zip" -o -name "*.pdf" -o -name "*.txt" -o -name "*.ino" -o -name "*.cpp" -o -name "*.h" \) \
-                -exec cp {} "pdf_output/$dir_name/resource/" 2>/dev/null \; || true
+              rsync -av "$dir_name/resource/" "pdf_output/$dir_name/resource/" 2>/dev/null || true
+            fi
+            
+            # 检查文件是否存在
+            if [ ! -f "$md_file" ]; then
+              echo "  ✗ 错误: 文件不存在: $md_file"
+              continue
             fi
             
             # 预处理 Markdown 文件
@@ -262,45 +300,68 @@ jobs:
             # 创建临时文件
             TEMP_FILE="$(mktemp)"
             
-            # 读取并处理文件内容
+            # 使用 Python 处理文件内容
             python3 << 'PYTHON_SCRIPT' > "$TEMP_FILE"
           import re
+          import os
           import sys
           
           # 读取文件内容
           with open('$md_file', 'r', encoding='utf-8') as f:
               content = f.read()
           
+          # 获取文件所在目录
+          file_dir = os.path.dirname('$md_file')
+          if file_dir == '':
+              file_dir = '.'
+          
           # 1. 修复图片路径
-          # 将相对路径转换为绝对路径
           def fix_image_path(match):
               alt_text = match.group(1)
               img_path = match.group(2)
               
-              # 如果路径以 ./ 开头，去掉它
+              # 去除开头的 ./
               if img_path.startswith('./'):
                   img_path = img_path[2:]
               
-              # 如果是相对路径，转换为相对于当前目录的路径
-              if not img_path.startswith('http'):
-                  # 获取文件所在目录
-                  import os
-                  file_dir = os.path.dirname('$md_file')
-                  
-                  # 构建完整路径
-                  full_path = os.path.join(file_dir, img_path)
-                  full_path = os.path.relpath(full_path, '.')
-                  
-                  return f'![{alt_text}]({full_path})'
+              # 检查文件是否存在
+              full_path = os.path.join(file_dir, img_path)
+              if os.path.exists(full_path):
+                  # 使用相对路径
+                  return f'![{alt_text}]({img_path})'
+              else:
+                  # 尝试其他可能的位置
+                  if img_path.startswith('picture/') or img_path.startswith('resource/'):
+                      return f'![{alt_text}]({img_path})'
+                  else:
+                      # 如果图片在 picture 目录中
+                      picture_path = os.path.join(file_dir, 'picture', os.path.basename(img_path))
+                      if os.path.exists(picture_path):
+                          return f'![{alt_text}](picture/{os.path.basename(img_path)})'
               
               return match.group(0)
           
-          # 替换图片路径
-          content = re.sub(r'!\[(.*?)\]\((.*?)\)', fix_image_path, content)
+          # 替换所有图片路径
+          pattern = r'!\[(.*?)\]\((.*?)\)'
+          content = re.sub(pattern, fix_image_path, content)
           
           # 2. 修复代码块 - 确保代码块有正确的语言标记和格式
-          content = re.sub(r'```(\w*)\s*\n', r'```\1\n', content)
-          content = re.sub(r'\n```', r'\n```\n', content)
+          # 找到所有代码块
+          code_blocks = re.findall(r'```(\w*)\n(.*?)```', content, re.DOTALL)
+          for lang, code in code_blocks:
+              # 清理代码中的多余空格和换行
+              code = code.strip()
+              # 在每行末尾添加换行
+              lines = code.split('\n')
+              cleaned_lines = []
+              for line in lines:
+                  line = line.rstrip()
+                  cleaned_lines.append(line)
+              cleaned_code = '\n'.join(cleaned_lines)
+              # 替换原始代码块
+              old_block = f'```{lang}\n{code}```'
+              new_block = f'```{lang}\n{cleaned_code}\n```'
+              content = content.replace(old_block, new_block)
           
           # 3. 修复特殊字符
           content = content.replace('Δ', '△')
@@ -317,31 +378,73 @@ jobs:
           # 6. 修复表格格式
           content = re.sub(r'\|(.*?)\|\n([^\|])', r'|\1|\n\n\2', content)
           
+          # 7. 修复代码中的换行（特别处理）
+          # 在分号、大括号后添加换行，如果行太长
+          lines = content.split('\n')
+          in_code_block = False
+          code_block_lang = ''
+          processed_lines = []
+          
+          for line in lines:
+              if line.startswith('```'):
+                  in_code_block = not in_code_block
+                  if in_code_block:
+                      code_block_lang = line[3:].strip()
+                  else:
+                      code_block_lang = ''
+                  processed_lines.append(line)
+                  continue
+              
+              if in_code_block and code_block_lang in ['cpp', 'c', 'c++', 'python']:
+                  # 对于代码块中的长行，在适当位置添加换行
+                  if len(line) > 80 and (';' in line or '{' in line or '}' in line):
+                      # 在分号后添加换行
+                      line = re.sub(r';\s*', ';\n    ', line)
+                      # 在左大括号后添加换行
+                      line = re.sub(r'\{\s*', '{\n    ', line)
+                      # 在右大括号前添加换行
+                      line = re.sub(r'\s*\}', '\n}', line)
+                  processed_lines.append(line)
+              else:
+                  processed_lines.append(line)
+          
+          content = '\n'.join(processed_lines)
+          
           # 输出处理后的内容
           print(content)
           PYTHON_SCRIPT
             
-            # 获取文件所在目录的绝对路径
-            FILE_DIR=$(dirname "$md_file")
-            ABS_FILE_DIR=$(realpath "$FILE_DIR")
+            # 检查预处理是否成功
+            if [ ! -s "$TEMP_FILE" ]; then
+              echo "  警告: 预处理后文件为空，使用原始文件"
+              cp "$md_file" "$TEMP_FILE"
+            fi
             
             # 构建资源路径
-            RESOURCE_PATH="$ABS_FILE_DIR:$WORKING_DIR"
+            RESOURCE_PATHS=(
+              "$WORKING_DIR/$dir_name"
+              "$WORKING_DIR"
+              "."
+              "$dir_name"
+            )
             
-            # 添加可能的资源目录
-            if [ -d "$FILE_DIR/picture" ]; then
-              RESOURCE_PATH="$RESOURCE_PATH:$ABS_FILE_DIR/picture"
+            # 添加资源目录
+            if [ -d "$dir_name/picture" ]; then
+              RESOURCE_PATHS+=("$WORKING_DIR/$dir_name/picture")
             fi
             
-            if [ -d "$FILE_DIR/resource" ]; then
-              RESOURCE_PATH="$RESOURCE_PATH:$ABS_FILE_DIR/resource"
+            if [ -d "$dir_name/resource" ]; then
+              RESOURCE_PATHS+=("$WORKING_DIR/$dir_name/resource")
             fi
+            
+            # 构建资源路径字符串
+            RESOURCE_PATH=$(IFS=:; echo "${RESOURCE_PATHS[*]}")
             
             # 使用 pandoc 转换 PDF
             echo "  使用 Pandoc 转换..."
             
             set +e
-            pandoc "$TEMP_FILE" \
+            PANDOC_OUTPUT=$(pandoc "$TEMP_FILE" \
               --resource-path="$RESOURCE_PATH" \
               -o "pdf_output/$dir_name/$base_name.pdf" \
               --pdf-engine=xelatex \
@@ -362,8 +465,8 @@ jobs:
               --toc-depth=3 \
               --wrap=none \
               -M date="$(date '+%Y-%m-%d')" \
-              --metadata=title:"$base_name" \
-              2>&1 | tee "/tmp/pandoc-${base_name}.log"
+              --metadata title="$base_name" \
+              2>&1)
             
             PANDOC_EXIT=$?
             set -e
@@ -373,29 +476,27 @@ jobs:
               # 获取文件信息
               FILE_SIZE=$(du -h "pdf_output/$dir_name/$base_name.pdf" | cut -f1)
               
-              # 检查页数
-              if command -v pdfinfo > /dev/null 2>&1; then
-                PAGE_COUNT=$(pdfinfo "pdf_output/$dir_name/$base_name.pdf" 2>/dev/null | grep "Pages:" | awk '{print $2}' || echo "N/A")
-                echo "  ✅ 成功: $base_name.pdf ($FILE_SIZE, $PAGE_COUNT 页)"
-              else
-                echo "  ✅ 成功: $base_name.pdf ($FILE_SIZE)"
-              fi
+              echo "  ✅ 成功: $base_name.pdf ($FILE_SIZE)"
               
               # 验证内容
               echo "    内容验证:"
               
               # 检查代码块
-              if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | grep -q "#include"; then
+              if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | head -50 | grep -q "#include"; then
                 echo "      ✓ 检测到代码块"
+              else
+                echo "      ⚠ 未检测到代码块"
               fi
               
-              # 检查图片
+              # 检查图片引用
               if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | grep -q "图像\|图片\|image"; then
                 echo "      ✓ 检测到图片引用"
+              else
+                echo "      ⚠ 未检测到图片引用"
               fi
               
               # 检查中文内容
-              if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | grep -q "课程\|实验\|硬件"; then
+              if pdftotext "pdf_output/$dir_name/$base_name.pdf" - 2>/dev/null | head -20 | grep -q "课程\|实验\|硬件"; then
                 echo "      ✓ 检测到中文内容"
               fi
               
@@ -403,17 +504,31 @@ jobs:
               echo "  ❌ 失败: $md_file"
               
               # 显示错误日志
-              if [ -f "/tmp/pandoc-${base_name}.log" ]; then
-                echo "    错误信息:"
-                tail -20 "/tmp/pandoc-${base_name}.log" | sed 's/^/      /'
+              echo "    Pandoc 退出代码: $PANDOC_EXIT"
+              echo "    错误信息前10行:"
+              echo "$PANDOC_OUTPUT" | head -10 | sed 's/^/      /'
+              
+              # 尝试简单测试
+              echo "    尝试简单测试..."
+              echo "# Test" > /tmp/test.md
+              echo "Test content" >> /tmp/test.md
+              echo '```cpp' >> /tmp/test.md
+              echo '#include <iostream>' >> /tmp/test.md
+              echo 'int main() { return 0; }' >> /tmp/test.md
+              echo '```' >> /tmp/test.md
+              
+              if pandoc /tmp/test.md -o /tmp/test.pdf --pdf-engine=xelatex 2>/dev/null; then
+                echo "      简单测试成功"
+              else
+                echo "      简单测试失败"
               fi
             fi
             
             # 清理临时文件
-            rm -f "$TEMP_FILE" "/tmp/pandoc-${base_name}.log" 2>/dev/null || true
+            rm -f "$TEMP_FILE" 2>/dev/null || true
             
             echo ""  # 空行分隔
-          done
+          done < /tmp/markdown_files.txt
           
           # 显示转换统计
           echo ""
@@ -426,28 +541,27 @@ jobs:
           echo "验证 PDF 输出质量..."
           
           # 检查每个 PDF 文件
-          find pdf_output -name "*.pdf" -type f | head -5 | while read pdf_file; do
+          find pdf_output -name "*.pdf" -type f | head -3 | while read pdf_file; do
+            echo ""
             echo "检查文件: $pdf_file"
             
             # 检查 PDF 基本信息
             if command -v pdfinfo > /dev/null 2>&1; then
               if pdfinfo "$pdf_file" > /dev/null 2>&1; then
-                PAGE_COUNT=$(pdfinfo "$pdf_file" 2>/dev/null | grep "Pages:" | awk '{print $2}')
+                PAGE_COUNT=$(pdfinfo "$pdf_file" 2>/dev/null | grep "Pages:" | awk '{print $2}' || echo "N/A")
                 FILE_SIZE=$(du -h "$pdf_file" | cut -f1)
-                echo "  ✓ 有效 PDF ($FILE_SIZE, $PAGE_COUNT 页)"
+                echo "  ✅ 有效 PDF ($FILE_SIZE, $PAGE_COUNT 页)"
                 
                 # 提取文本检查
-                echo "    文本预览:"
+                echo "    文本预览（前5行）:"
                 pdftotext "$pdf_file" - 2>/dev/null | head -5 | sed 's/^/      /'
                 
               else
-                echo "  ✗ 无效 PDF 文件"
+                echo "  ❌ 无效 PDF 文件"
               fi
             else
               echo "  ℹ 无法检查 PDF 信息 (pdfinfo 不可用)"
             fi
-            
-            echo ""
           done
       
       - name: Create documentation and summary
@@ -499,27 +613,6 @@ jobs:
             
             echo "- [$file_name]($rel_path) ($file_size)" >> pdf_output/README.md
           done
-          
-          # 添加使用说明
-          cat >> pdf_output/README.md << 'EOF'
-          
-          ## 质量保证
-          
-          此转换过程已优化以确保:
-          
-          1. **代码块正确换行** - 使用 listings 包，设置 breaklines=true
-          2. **图片正确显示** - 自动修复图片路径
-          3. **中文字体支持** - 使用 Noto Serif CJK SC 字体
-          4. **格式保持** - 保持原始 Markdown 的标题、列表、表格格式
-          
-          ## 问题反馈
-          
-          如果发现任何问题，请检查:
-          
-          - 图片路径是否正确
-          - 代码块是否有正确的语言标记
-          - 特殊字符是否被正确处理
-          EOF
       
       - name: Package PDFs for release
         if: startsWith(github.ref, 'refs/tags/')
@@ -571,4 +664,4 @@ jobs:
           
           echo ""
           echo "输出目录结构:"
-          find pdf_output -type d | sort | sed 's/^/  /'
+          find pdf_output -maxdepth 3 -type d | sort | sed 's/^/  /'
